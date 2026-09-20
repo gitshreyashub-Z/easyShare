@@ -3,6 +3,7 @@ import { useDispatch } from 'react-redux';
 import { deleteFile } from '../store/slices/fileSlice';
 import { toast } from 'react-toastify';
 import ShareModal from './ShareModal';
+import { getApiUrl } from '../api/axios';
 
 const formatSize = (bytes) => {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -79,9 +80,8 @@ export default function FileCard({ file }) {
             Share
           </button>
           
-          {/* Fixed the missing opening '<a' tag below */}
           <a 
-            href={`http://localhost:5000/api/files/${file.shortId}/download`}
+            href={getApiUrl(`/files/${file.shortId}/download`)}
             className="btn-ghost text-xs py-2 px-3 flex-1 text-center"
           >
             Download

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'react-toastify';
+import { getApiUrl } from '../api/axios';
 
 export default function ShareModal({ file, onClose }) {
   const [tab, setTab] = useState('link');
@@ -57,7 +58,7 @@ export default function ShareModal({ file, onClose }) {
             </div>
             
             <a 
-              href={`http://localhost:5000/api/files/${file.shortId}/download`}
+              href={getApiUrl(`/files/${file.shortId}/download`)}
               className="btn-ghost w-full text-center block text-sm"
             >
               ⬇️ Download File
