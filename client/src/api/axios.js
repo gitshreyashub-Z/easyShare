@@ -2,7 +2,9 @@ import axios from 'axios';
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim().replace(/\/+$/, '');
 export const API_BASE_URL = configuredApiUrl || (
-  import.meta.env.DEV ? 'http://localhost:5000/api' : '/api'
+  import.meta.env.DEV
+    ? 'http://localhost:5000/api'
+    : 'https://easyshare-2p21.onrender.com/api'
 );
 export const API_ORIGIN = API_BASE_URL.endsWith('/api')
   ? API_BASE_URL.slice(0, -'/api'.length)
