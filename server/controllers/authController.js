@@ -9,34 +9,99 @@ const generateToken = (id) =>
 
 const resetFields = '+resetOtpHash +resetOtpExpires +resetOtpAttempts +resetOtpLastSent';
 
-const getMailer = () => {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
-    if (process.env.NODE_ENV !== 'production') {
-      return {
-        isDevFallback: true,
-        sendMail: async ({ to, subject, otp }) => {
-          console.log('\n==========================================');
-          console.log(' [DEV EMAIL FALLBACK] Password Reset OTP');
-          console.log(` To:      ${to}`);
-          console.log(` Subject: ${subject}`);
-          console.log(` OTP:     ${otp}`);
-          console.log(' Valid for 10 minutes.');
-          console.log(' Configure SMTP_* in .env to send real emails.');
-          console.log('==========================================\n');
-          return { messageId: 'dev-fallback' };
-        },
-      };
+const sendResetEmail = async ({ to, otp }) => {
+  const subject = 'PasteBox - Your Password Reset Code';
+  const text = `Your PasteBox password reset code is ${otp}. It expires in 10 minutes.`;
+  const html = getResetEmailHtml(otp);
+
+  // 1. Resend API (HTTP port 443 — Recommended for cloud hosts like Render which block SMTP ports)
+  if (process.env.RESEND_API_KEY) {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: process.env.EMAIL_FROM || 'PasteBox <onboarding@resend.dev>',
+        to: [to],
+        subject,
+        text,
+        html,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(`Resend error: ${data.message || res.statusText}`);
     }
-    throw new Error('Email delivery is not configured');
+    return { provider: 'resend', id: data.id };
   }
 
-  return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT),
-    secure: Number(SMTP_PORT) === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
+  // 2. Brevo HTTP API (HTTP port 443 — Free 300 emails/day)
+  if (process.env.BREVO_API_KEY) {
+    const fromParts = (process.env.EMAIL_FROM || 'PasteBox <no-reply@pastebox.app>').match(/^(.*?)\s*<(.+)>$/);
+    const senderName = fromParts ? fromParts[1].trim() : 'PasteBox';
+    const senderEmail = fromParts ? fromParts[2].trim() : (process.env.EMAIL_FROM || 'no-reply@pastebox.app');
+
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': process.env.BREVO_API_KEY.trim(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: to }],
+        subject,
+        textContent: text,
+        htmlContent: html,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(`Brevo error: ${data.message || res.statusText}`);
+    }
+    return { provider: 'brevo', messageId: data.messageId };
+  }
+
+  // 3. SMTP (with strict 7s connection timeout to avoid hanging if host blocks port 465/587)
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
+  if (SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS) {
+    const transporter = nodemailer.createTransport({
+      host: SMTP_HOST.trim(),
+      port: Number(SMTP_PORT),
+      secure: Number(SMTP_PORT) === 465,
+      auth: { user: SMTP_USER.trim(), pass: SMTP_PASS.trim() },
+      connectionTimeout: 7000,
+      greetingTimeout: 7000,
+      socketTimeout: 7000,
+    });
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || SMTP_USER,
+      to,
+      subject,
+      text,
+      html,
+    });
+    return { provider: 'smtp' };
+  }
+
+  // 4. Local dev fallback (prints OTP to console if no provider is configured in development)
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('\n==========================================');
+    console.log(' [DEV EMAIL FALLBACK] Password Reset OTP');
+    console.log(` To:      ${to}`);
+    console.log(` Subject: ${subject}`);
+    console.log(` OTP:     ${otp}`);
+    console.log(' Valid for 10 minutes.');
+    console.log('==========================================\n');
+    return { provider: 'dev-fallback' };
+  }
+
+  throw new Error('Email delivery is not configured. Set RESEND_API_KEY or SMTP credentials.');
 };
 
 const getResetEmailHtml = (otp) => `
@@ -174,14 +239,20 @@ export const requestPasswordReset = async (req, res) => {
     user.resetOtpLastSent = new Date();
     await user.save();
 
-    await getMailer().sendMail({
-      from: process.env.EMAIL_FROM || process.env.SMTP_USER || 'PasteBox <no-reply@pastebox.app>',
-      to: user.email,
-      subject: 'PasteBox - Your Password Reset Code',
-      text: `Your PasteBox password reset code is ${otp}. It expires in 10 minutes.`,
-      html: getResetEmailHtml(otp),
-      otp,
-    });
+    try {
+      await sendResetEmail({ to: user.email, otp });
+    } catch (emailErr) {
+      console.error('Email send failed:', emailErr.message);
+      if (emailErr.code === 'ETIMEDOUT' || emailErr.message?.includes('timeout') || emailErr.message?.includes('connect')) {
+        console.error('CRITICAL: SMTP connection timed out. Free cloud hosts like Render block outbound SMTP ports (25, 465, 587). Please configure RESEND_API_KEY (HTTP API over port 443).');
+        return res.status(500).json({
+          message: 'Email service connection timed out. If hosted on Render, please use Resend API instead of SMTP.',
+        });
+      }
+      return res.status(500).json({
+        message: emailErr.message || 'Unable to send verification email. Please check email settings.',
+      });
+    }
 
     return res.json(response);
   } catch (err) {
