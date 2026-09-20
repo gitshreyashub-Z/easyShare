@@ -16,10 +16,19 @@ export const loginUser = createAsyncThunk('auth/login', async (data, { rejectWit
 export const registerUser = createAsyncThunk('auth/register', async (data, { rejectWithValue }) => {
   try {
     const res = await api.post('/auth/register', data);
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Registration failed');
+  }
+});
+
+export const verifySignupOtp = createAsyncThunk('auth/verifySignupOtp', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/auth/verify-signup-otp', data);
     localStorage.setItem('pasteboxUser', JSON.stringify(res.data));
     return res.data;
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Register failed');
+    return rejectWithValue(err.response?.data?.message || 'Verification failed');
   }
 });
 
@@ -39,8 +48,11 @@ const authSlice = createSlice({
       .addCase(loginUser.fulfilled, (s, a) => { s.loading = false; s.user = a.payload; })
       .addCase(loginUser.rejected, (s, a) => { s.loading = false; s.error = a.payload; })
       .addCase(registerUser.pending, (s) => { s.loading = true; s.error = null; })
-      .addCase(registerUser.fulfilled, (s, a) => { s.loading = false; s.user = a.payload; })
-      .addCase(registerUser.rejected, (s, a) => { s.loading = false; s.error = a.payload; });
+      .addCase(registerUser.fulfilled, (s) => { s.loading = false; })
+      .addCase(registerUser.rejected, (s, a) => { s.loading = false; s.error = a.payload; })
+      .addCase(verifySignupOtp.pending, (s) => { s.loading = true; s.error = null; })
+      .addCase(verifySignupOtp.fulfilled, (s, a) => { s.loading = false; s.user = a.payload; })
+      .addCase(verifySignupOtp.rejected, (s, a) => { s.loading = false; s.error = a.payload; });
   },
 });
 
