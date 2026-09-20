@@ -62,6 +62,37 @@ const sendEmail = async ({ to, subject, text, html, devTitle = 'Email Notificati
     return { provider: 'brevo', messageId: data.messageId };
   }
 
+  // 3. SendGrid API (HTTP port 443 — 100 free emails/day)
+  if (process.env.SENDGRID_API_KEY) {
+    const fromParts = (process.env.EMAIL_FROM || 'PasteBox <no-reply@pastebox.app>').match(/^(.*?)\s*<(.+)>$/);
+    const senderName = fromParts ? fromParts[1].trim() : 'PasteBox';
+    const senderEmail = fromParts ? fromParts[2].trim() : (process.env.EMAIL_FROM || 'no-reply@pastebox.app');
+
+    const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.SENDGRID_API_KEY.trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: to }] }],
+        from: { email: senderEmail, name: senderName },
+        subject,
+        content: [
+          { type: 'text/plain', value: text },
+          { type: 'text/html', value: html },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      const msg = errData?.errors?.[0]?.message || res.statusText;
+      throw new Error(`SendGrid error: ${msg}`);
+    }
+    return { provider: 'sendgrid' };
+  }
+
   // 3. SMTP (with strict 7s connection timeout to avoid hanging if host blocks port 465/587)
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
   if (SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS) {
