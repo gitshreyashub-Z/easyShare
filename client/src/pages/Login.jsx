@@ -40,6 +40,9 @@ export default function Login() {
               <input name="password" type="password" value={form.password} onChange={handle}
                 placeholder="••••••••" className="input-field" required />
             </div>
+            <div className="text-right -mt-1">
+              <Link to="/forgot-password" className="text-sm text-indigo-400 hover:text-indigo-300">Forgot password?</Link>
+            </div>
             <button type="submit" disabled={loading} className="btn-primary w-full mt-2">
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
