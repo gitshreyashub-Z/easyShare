@@ -6,6 +6,7 @@ const fileSchema = new mongoose.Schema({
   mimetype: { type: String, required: true },
   size: { type: Number, required: true },
   path: { type: String, required: true },
+  storagePath: { type: String },
   shortId: { type: String, required: true, unique: true },
   downloadCount: { type: Number, default: 0 },
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

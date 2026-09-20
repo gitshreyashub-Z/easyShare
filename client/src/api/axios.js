@@ -6,12 +6,7 @@ export const API_BASE_URL = configuredApiUrl || (
     ? 'http://localhost:5000/api'
     : 'https://easyshare-2p21.onrender.com/api'
 );
-export const API_ORIGIN = API_BASE_URL.endsWith('/api')
-  ? API_BASE_URL.slice(0, -'/api'.length)
-  : API_BASE_URL;
-
 export const getApiUrl = (path) => `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
-export const getUploadUrl = (filename) => `${API_ORIGIN}/uploads/${encodeURIComponent(filename)}`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,

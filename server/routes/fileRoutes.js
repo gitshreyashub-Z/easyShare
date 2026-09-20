@@ -4,7 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import {
-  uploadFile, getFileByShortId, downloadFile,
+  uploadFile, getFileByShortId, downloadFile, previewFile,
   getUserFiles, deleteFile
 } from '../controllers/fileController.js';
 import { protect, optionalAuth } from '../middleware/authMiddleware.js';
@@ -31,8 +31,9 @@ const upload = multer({
 const router = express.Router();
 router.post('/upload', optionalAuth, upload.single('file'), uploadFile);
 router.get('/my-files', protect, getUserFiles);
-router.get('/:shortId', getFileByShortId);
+router.get('/:shortId/preview', previewFile);
 router.get('/:shortId/download', downloadFile);
+router.get('/:shortId', getFileByShortId);
 router.delete('/:shortId', protect, deleteFile);
 
 export default router;

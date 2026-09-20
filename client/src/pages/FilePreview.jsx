@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import api, { getApiUrl, getUploadUrl } from '../api/axios';
+import api, { getApiUrl } from '../api/axios';
 import ShareModal from '../components/ShareModal';
 
 const formatSize = (b) => b < 1024 * 1024 ? (b / 1024).toFixed(1) + ' KB' : (b / (1024 * 1024)).toFixed(1) + ' MB';
@@ -43,7 +43,7 @@ export default function FilePreview() {
   );
 
   const isImage = file.mimetype?.startsWith('image');
-  const previewUrl = getUploadUrl(file.filename);
+  const previewUrl = getApiUrl(`/files/${file.shortId}/preview`);
   const downloadUrl = getApiUrl(`/files/${file.shortId}/download`);
 
   return (
