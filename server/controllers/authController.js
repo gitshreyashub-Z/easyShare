@@ -262,7 +262,7 @@ export const register = async (req, res) => {
     } catch (emailErr) {
       console.error('Signup email error:', emailErr.message);
       return res.status(500).json({
-        message: 'Failed to send verification email. Please check your email configuration.',
+        message: emailErr.message || 'Failed to send verification email. Please check your email configuration.',
       });
     }
 
