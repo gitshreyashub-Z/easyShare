@@ -9,65 +9,22 @@ const generateToken = (id) =>
 
 const resetFields = '+resetOtpHash +resetOtpExpires +resetOtpAttempts +resetOtpLastSent';
 
+const parseEmailFrom = (rawFrom, defaultEmail = 'no-reply@pastebox.app') => {
+  if (!rawFrom) return { name: 'PasteBox', email: defaultEmail, full: `PasteBox <${defaultEmail}>` };
+  const trimmed = rawFrom.trim();
+  const match = trimmed.match(/^(.*?)\s*<?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})>?$/);
+  if (match) {
+    const name = match[1]?.trim() || 'PasteBox';
+    const email = match[2]?.trim();
+    return { name, email, full: `${name} <${email}>` };
+  }
+  return { name: 'PasteBox', email: defaultEmail, full: `PasteBox <${defaultEmail}>` };
+};
+
 const sendEmail = async ({ to, subject, text, html, devTitle = 'Email Notification' }) => {
-  // 1. Resend API (HTTP port 443 — Recommended for cloud hosts like Render which block SMTP ports)
-  if (process.env.RESEND_API_KEY) {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.RESEND_API_KEY.trim()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: process.env.EMAIL_FROM || 'PasteBox <onboarding@resend.dev>',
-        to: [to],
-        subject,
-        text,
-        html,
-      }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(`Resend error: ${data.message || res.statusText}`);
-    }
-    return { provider: 'resend', id: data.id };
-  }
-
-  // 2. Brevo HTTP API (HTTP port 443 — Free 300 emails/day)
-  if (process.env.BREVO_API_KEY) {
-    const fromParts = (process.env.EMAIL_FROM || 'PasteBox <no-reply@pastebox.app>').match(/^(.*?)\s*<(.+)>$/);
-    const senderName = fromParts ? fromParts[1].trim() : 'PasteBox';
-    const senderEmail = fromParts ? fromParts[2].trim() : (process.env.EMAIL_FROM || 'no-reply@pastebox.app');
-
-    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'api-key': process.env.BREVO_API_KEY.trim(),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        sender: { name: senderName, email: senderEmail },
-        to: [{ email: to }],
-        subject,
-        textContent: text,
-        htmlContent: html,
-      }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(`Brevo error: ${data.message || res.statusText}`);
-    }
-    return { provider: 'brevo', messageId: data.messageId };
-  }
-
-  // 3. SendGrid API (HTTP port 443 — 100 free emails/day)
+  // 1. SendGrid API (HTTP port 443 — 100 free emails/day to any recipient)
   if (process.env.SENDGRID_API_KEY) {
-    const fromParts = (process.env.EMAIL_FROM || 'PasteBox <no-reply@pastebox.app>').match(/^(.*?)\s*<(.+)>$/);
-    const senderName = fromParts ? fromParts[1].trim() : 'PasteBox';
-    const senderEmail = fromParts ? fromParts[2].trim() : (process.env.EMAIL_FROM || 'no-reply@pastebox.app');
-
+    const parsed = parseEmailFrom(process.env.EMAIL_FROM);
     const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
@@ -76,7 +33,7 @@ const sendEmail = async ({ to, subject, text, html, devTitle = 'Email Notificati
       },
       body: JSON.stringify({
         personalizations: [{ to: [{ email: to }] }],
-        from: { email: senderEmail, name: senderName },
+        from: { email: parsed.email, name: parsed.name },
         subject,
         content: [
           { type: 'text/plain', value: text },
@@ -91,6 +48,56 @@ const sendEmail = async ({ to, subject, text, html, devTitle = 'Email Notificati
       throw new Error(`SendGrid error: ${msg}`);
     }
     return { provider: 'sendgrid' };
+  }
+
+  // 2. Brevo HTTP API (HTTP port 443 — Free 300 emails/day)
+  if (process.env.BREVO_API_KEY) {
+    const parsed = parseEmailFrom(process.env.EMAIL_FROM);
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': process.env.BREVO_API_KEY.trim(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: parsed.name, email: parsed.email },
+        to: [{ email: to }],
+        subject,
+        textContent: text,
+        htmlContent: html,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(`Brevo error: ${data.message || res.statusText}`);
+    }
+    return { provider: 'brevo', messageId: data.messageId };
+  }
+
+  // 3. Resend API (HTTP port 443)
+  if (process.env.RESEND_API_KEY) {
+    const parsed = parseEmailFrom(process.env.EMAIL_FROM, 'onboarding@resend.dev');
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: parsed.full,
+        to: [to],
+        subject,
+        text,
+        html,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(`Resend error: ${data.message || res.statusText}`);
+    }
+    return { provider: 'resend', id: data.id };
   }
 
   // 3. SMTP (with strict 7s connection timeout to avoid hanging if host blocks port 465/587)
